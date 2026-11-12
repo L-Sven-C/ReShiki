@@ -2,6 +2,8 @@
 
 This optional Office task pane stores an editable native ReShiki drawing and a PNG preview together in Word, Excel, and PowerPoint files on macOS and Windows. It uses a local HTTPS companion and an installed ReShiki executable. It is an MVP for sideloaded testing, not a published Marketplace add-in. Host mocks and protocol tests do not establish a real Office round trip: complete the acceptance table below on each target host before claiming support for that combination.
 
+For this fork's macOS Word work, see the [development setup](../../docs/development/macos-word-integration.md), [source audit](../../docs/development/office-architecture.md), and [test report](../../docs/development/office-test-report.md). The report separates observed desktop results from automated coverage and pending acceptance cases.
+
 ## Editing and saving
 
 1. Start the companion, open the add-in in your Office file, and keep the pane open.
