@@ -1,6 +1,7 @@
 //! The optional Microsoft 365 task pane acknowledges the exact native save only
 //! after Office reads back the intended embedded object. Local persistence alone
 //! must never tell the user that their Office document has been updated.
+//! Fork change: persist recovery before reading potentially lost session metadata.
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -55,10 +56,7 @@ pub fn save(path: &Path, bytes: &[u8]) -> Result<(), String> {
     save_with_timeout(path, bytes, Duration::from_secs(20))
 }
 
-fn save_with_timeout(path: &Path, bytes: &[u8], timeout: Duration) -> Result<(), String> {
-    let directory = path
-        .parent()
-        .ok_or("Microsoft 365 recovery directory is missing")?;
+fn read_session(directory: &Path) -> Result<Session, String> {
     let session: Session = serde_json::from_slice(&read_bounded(&directory.join("session.json"))?)
         .map_err(|error| format!("Invalid Microsoft 365 session: {error}"))?;
     if session.version != 1
@@ -70,8 +68,25 @@ fn save_with_timeout(path: &Path, bytes: &[u8], timeout: Duration) -> Result<(),
     {
         return Err("Invalid Microsoft 365 edit-session identity".into());
     }
+    Ok(session)
+}
+
+fn save_with_timeout(path: &Path, bytes: &[u8], timeout: Duration) -> Result<(), String> {
+    let directory = path
+        .parent()
+        .ok_or("Microsoft 365 recovery directory is missing")?;
+    // Recovery does not require live Office authorization. Keep the newest
+    // drawing even if the companion's metadata is missing or corrupt; only a
+    // validated session may publish a request and receive an acknowledgement.
+    // If this atomic write fails, do not claim that a recovery draft was saved.
+    crate::storage::write_atomic(path, bytes)?;
+    let session = read_session(directory).map_err(|error| {
+        format!(
+            "Draft saved at {}. Microsoft 365 update was not requested: {error}. Use Save As to keep a separate drawing, or import the recovery draft from the Office task pane.",
+            path.display()
+        )
+    })?;
     if session.closed {
-        crate::storage::write_atomic(path, bytes)?;
         return Err(format!(
             "This Microsoft 365 edit session has ended. Draft saved at {}. Use Save As to keep a separate drawing, or reopen the drawing from the Office task pane.",
             path.display()
@@ -93,7 +108,6 @@ fn save_with_timeout(path: &Path, bytes: &[u8], timeout: Duration) -> Result<(),
         revision: format!("{:x}", Sha256::digest(bytes)),
         accepted: false,
     };
-    crate::storage::write_atomic(path, bytes)?;
     crate::storage::write_atomic(
         &directory.join("request.json"),
         &serde_json::to_vec(&request).map_err(|error| error.to_string())?,
@@ -120,3 +134,6 @@ fn save_with_timeout(path: &Path, bytes: &[u8], timeout: Duration) -> Result<(),
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod recovery_tests;
