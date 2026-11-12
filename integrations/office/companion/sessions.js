@@ -126,6 +126,8 @@ export class Sessions {
     // their reservations, but retain every draft and close its authorization.
     for (const session of this.sessions.values())
       if (!this.clients.has(session.clientId)) await this.retireLocked(session);
+      else if (session.target.objectId === target.objectId)
+        await this.retireClosedTabLocked(session);
     if (this.sessions.size >= 32)
       throw new Error("Too many edit sessions; restart the companion after finishing edits");
     if ([...this.sessions.values()].some((s) => s.target.objectId === target.objectId))
@@ -184,6 +186,8 @@ export class Sessions {
     if (finished?.clientId === clientId)
       return { pending: null, finished: true, recoveryFile: finished.file };
     const session = this.own(id, clientId);
+    if ((await this.retireClosedTabLocked(session))?.finished)
+      return { pending: null, finished: true, recoveryFile: session.file };
     if (session.pending) return { pending: session.pending, error: session.error };
     let request;
     try {
@@ -305,6 +309,21 @@ export class Sessions {
       session.nativeExited = true;
       return this.retireIfReadyLocked(session);
     });
+  }
+  async retireClosedTabLocked(session) {
+    let notice;
+    try {
+      notice = JSON.parse(await boundedRead(path.join(session.directory, "closed.json"), 4096));
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw new Error(`Invalid native tab-close notice: ${error.message}`);
+    }
+    if (!notice || notice.version !== 1 || notice.sessionId !== session.id)
+      throw new Error("Invalid native tab-close notice");
+    // Tab detachment and process exit have the same save/ACK barrier. Keep the
+    // reservation while an unread or pending native save still needs the pane.
+    session.nativeExited = true;
+    return this.retireIfReadyLocked(session);
   }
   async retireIfReadyLocked(session) {
     if (session.pending) return;

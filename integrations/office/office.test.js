@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import https from "node:https";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile, rm, mkdir, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm, mkdir, readdir, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -250,6 +250,112 @@ test("actual native exit retires a completed edit and permits same-pane reopen",
   const otherPane = f.sessions.createClient("Word");
   await assert.rejects(f.sessions.poll(first.sessionId, otherPane), /Unknown/);
   await f.sessions.nativeExited("already-removed-or-failed-launch");
+});
+
+async function nativeTabClosed(started, notice = { version: 1, sessionId: started.sessionId }) {
+  await writeFile(
+    path.join(path.dirname(started.recoveryFile), "closed.json"),
+    JSON.stringify(notice),
+  );
+}
+
+test("closing a native tab releases its reservation without requiring process exit", async (t) => {
+  const f = await fixture(t);
+  const first = await f.sessions.start(f.clientId, f.target, f.original);
+  await nativeTabClosed(first);
+  assert.equal((await f.sessions.poll(first.sessionId, f.clientId)).finished, true);
+  assert.equal(await readFile(first.recoveryFile, "utf8"), "original");
+  const second = await f.sessions.start(f.clientId, f.target, f.original);
+  await f.sessions.nativeExited(first.sessionId);
+  assert.equal(
+    f.sessions.sessions.has(second.sessionId),
+    true,
+    "late old process exit cannot close the new edit",
+  );
+});
+
+test("same-object reopen observes tab closure even before the next pane poll", async (t) => {
+  const f = await fixture(t);
+  const first = await f.sessions.start(f.clientId, f.target, f.original);
+  await nativeSave(f, first, "saved copy");
+  const { pending } = await f.sessions.poll(first.sessionId, f.clientId);
+  const body = ackBody(pending);
+  await f.sessions.acknowledge(first.sessionId, f.clientId, body);
+  await nativeTabClosed(first);
+  const second = await f.sessions.start(f.clientId, body.target, pending.envelope);
+  assert.notEqual(second.sessionId, first.sessionId);
+  assert.equal((await f.sessions.poll(first.sessionId, f.clientId)).finished, true);
+});
+
+test("tab closure cannot skip an unread or pending save acknowledgement", async (t) => {
+  for (const alreadyPolled of [false, true]) {
+    const f = await fixture(t);
+    const first = await f.sessions.start(f.clientId, f.target, f.original);
+    await nativeSave(f, first, "last edit");
+    if (alreadyPolled) await f.sessions.poll(first.sessionId, f.clientId);
+    await nativeTabClosed(first);
+    await assert.rejects(f.sessions.start(f.clientId, f.target, f.original), /already/);
+    const { pending } = await f.sessions.poll(first.sessionId, f.clientId);
+    assert.ok(pending);
+    await assert.rejects(readFile(path.join(path.dirname(first.recoveryFile), "ack.json")), /ENOENT/);
+    const body = ackBody(pending);
+    await f.sessions.acknowledge(first.sessionId, f.clientId, body);
+    assert.equal((await f.sessions.poll(first.sessionId, f.clientId)).finished, true);
+    assert.deepEqual(await f.sessions.acknowledge(first.sessionId, f.clientId, body), {
+      accepted: true,
+    });
+    assert.equal(await readFile(first.recoveryFile, "utf8"), "last edit");
+  }
+});
+
+test("invalid tab-close notices never release another live drawing", async (t) => {
+  for (const notice of [{ version: 2 }, { version: 1, sessionId: randomUUID() }, null]) {
+    const f = await fixture(t);
+    const first = await f.sessions.start(f.clientId, f.target, f.original);
+    await nativeTabClosed(first, notice);
+    await assert.rejects(f.sessions.poll(first.sessionId, f.clientId), /close notice/);
+    assert.equal(f.sessions.sessions.has(first.sessionId), true);
+    const other = await f.sessions.start(
+      f.clientId,
+      { ...f.target, objectId: randomUUID() },
+      f.original,
+    );
+    assert.equal(f.sessions.sessions.has(other.sessionId), true);
+  }
+});
+
+test("closing after a rejected save retains the draft without inventing a success ACK", async (t) => {
+  const f = await fixture(t);
+  const first = await f.sessions.start(f.clientId, f.target, f.original);
+  await nativeSave(f, first, "rejected draft");
+  const { pending } = await f.sessions.poll(first.sessionId, f.clientId);
+  await f.sessions.fail(first.sessionId, f.clientId, {
+    requestId: pending.requestId,
+    error: "Picture locked",
+    retryable: true,
+  });
+  await nativeTabClosed(first);
+  assert.equal((await f.sessions.poll(first.sessionId, f.clientId)).finished, true);
+  assert.equal(await readFile(first.recoveryFile, "utf8"), "rejected draft");
+  await assert.rejects(readFile(path.join(path.dirname(first.recoveryFile), "ack.json")), /ENOENT/);
+});
+
+test("tab-close notice rejects oversized, malformed and symlinked files", async (t) => {
+  const f = await fixture(t);
+  const first = await f.sessions.start(f.clientId, f.target, f.original);
+  const notice = path.join(path.dirname(first.recoveryFile), "closed.json");
+  for (const bytes of ["{", " ".repeat(4097)]) {
+    await writeFile(notice, bytes);
+    await assert.rejects(f.sessions.poll(first.sessionId, f.clientId), /close notice/);
+    assert.equal(f.sessions.sessions.has(first.sessionId), true);
+  }
+  if (process.platform !== "win32") {
+    await rm(notice);
+    await symlink(path.join(path.dirname(first.recoveryFile), "session.json"), notice);
+    await assert.rejects(f.sessions.poll(first.sessionId, f.clientId), /close notice/);
+    assert.equal(f.sessions.sessions.has(first.sessionId), true);
+  }
+  await assert.rejects(readFile(path.join(path.dirname(first.recoveryFile), "ack.json")), /ENOENT/);
 });
 
 test("native exit retains an unread save and lost final ACK is replayable after automatic retirement", async (t) => {

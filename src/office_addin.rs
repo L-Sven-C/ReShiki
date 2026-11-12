@@ -71,6 +71,27 @@ fn read_session(directory: &Path) -> Result<Session, String> {
     Ok(session)
 }
 
+/// Notify the companion when this document tab detaches, even if the native
+/// process stays open. Only the companion may retire authorization after it has
+/// handled any pending save; this notice never acknowledges or removes a draft.
+pub fn finish(path: &Path) -> Result<(), String> {
+    let directory = path
+        .parent()
+        .ok_or("Microsoft 365 recovery directory is missing")?;
+    let session = read_session(directory)?;
+    if session.closed {
+        return Ok(());
+    }
+    crate::storage::write_atomic(
+        &directory.join("closed.json"),
+        &serde_json::to_vec(&serde_json::json!({
+            "version": 1,
+            "sessionId": session.session_id,
+        }))
+        .map_err(|error| error.to_string())?,
+    )
+}
+
 fn save_with_timeout(path: &Path, bytes: &[u8], timeout: Duration) -> Result<(), String> {
     let directory = path
         .parent()
@@ -137,3 +158,6 @@ mod tests;
 
 #[cfg(test)]
 mod recovery_tests;
+
+#[cfg(test)]
+mod close_tests;

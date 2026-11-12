@@ -141,6 +141,12 @@ impl Binding {
     pub(crate) fn finish(&self) {
         if let Some(lease) = &self.lease {
             lease.transition(Phase::Open, Phase::Closed);
+        } else if self.host == Host::Microsoft365
+            && let Err(error) = reshiki::office_addin::finish(&self.path)
+        {
+            eprintln!(
+                "Microsoft 365 tab-close notification failed: {error}. Use End edit session in the task pane."
+            );
         }
     }
 }
