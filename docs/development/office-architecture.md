@@ -90,6 +90,10 @@ a verified cold-start offline product. Microsoft's [Office.js loading guidance](
 permits local references for internal/development use, but a complete local
 runtime packaging and compatibility test is separate work.
 
+The real Word save in this run downsampled displayed PNG media while retaining
+the original preview in custom XML. See the test report for pixel dimensions;
+native editability and publication-quality rendering require separate checks.
+
 ## Official API boundaries and upstream work
 
 - [Word event reference](https://learn.microsoft.com/en-us/office/dev/add-ins/word/word-add-ins-events)

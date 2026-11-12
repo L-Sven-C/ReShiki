@@ -104,6 +104,20 @@ The first round trip included user interaction between automated observations.
 The report distinguishes observed state, persisted evidence and missing steps;
 it does not claim unattended end-to-end automation or complete acceptance.
 
+## Observed image-quality limitation
+
+A direct package inspection found that this Word save **downsampled** the
+displayed PNG media: first object 1153 × 677 → 211 × 124 pixels, second object
+984 × 733 → 180 × 134. The full-size original previews remain in the custom XML
+records beside the native data. This is not just a compression-byte change;
+decoded RGBA dimensions differ (`03-displayed-image-check.json` and
+`03-decoded-image-check.json`, inspected with Pillow in an isolated uv runtime).
+The observed chemistry remained visually recognizable, but pixel equality and
+publication print fidelity are not established. Do not claim that an ACK or
+native payload hash verifies the saved Word image quality. Test Word image
+compression settings and printed output before phase 3; no global Word quality
+settings were changed during this run.
+
 ## Remaining priorities
 
 1. Finish save/close/reopen/re-edit and the two-object/selection-change tests
