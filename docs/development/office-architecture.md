@@ -40,6 +40,10 @@ are not evidence of a successful Word desktop round trip. See
 8. A known failed write is rolled back and verified where possible. An uncertain
    partial write blocks the session. A missing acknowledgement leaves the editor
    dirty. End-session and expiry retain drafts rather than deleting them.
+9. Native tab detachment writes a versioned, session-specific `closed.json`
+   notice. Companion polling or same-object reopening observes it and retires
+   the session only after unread/pending saves have been handled. Process exit
+   uses the same barrier; closing a tab does not require quitting the app.
 
 ## Status and gaps
 
@@ -50,11 +54,12 @@ are not evidence of a successful Word desktop round trip. See
 | Selection-independent update | `word.js:242`, `word.js:250`, `common.js:72` | Implemented; controlled Mac Word save with another object selected updated only the captured control (test report, 04/05 evidence) |
 | PNG + native version readback and exact ACK | `edit-flow.js:19`, `sessions.js:221`, `src/office_addin.rs` | Implemented; ACK means document model update, not disk save or cloud sync |
 | Rollback and recoverable drafts | `word.js:282`, `sessions.js:276`, `src/office_addin.rs` | Implemented; metadata-loss draft retention fixed in `3f6b43d0`, with three new native regressions |
-| Same-document duplicate independence | `word.js:214`, immutable records in `common.js` | Implemented; cross-document ordinary image paste is not guaranteed |
-| DOCX persistence | document-scoped custom XML + tagged control | Close/reopen/re-edit verified on the tested Mac Word build; AutoSave and undo/redo remain Pending |
-| Layout retention | `word.js:122`, `word-ooxml.js:192`, `common.js:354` | Partial: inline pictures only; original scale is carried forward, so changed intrinsic extent can change frame dimensions |
+| Same-document duplicate independence | `word.js:214`, immutable records in `common.js` | Full-control copy and pane editable copy verified; editing original and copy independently retained other objects. Picture-only paste loses editability |
+| DOCX persistence | document-scoped custom XML + tagged control | Close/reopen/re-edit and one real undo/redo/re-edit cycle verified; AutoSave remains Pending |
+| Layout retention | `word.js:122`, `word-ooxml.js:192`, `common.js:354` | Inline resize/right alignment, changed intrinsic extent and whole-control cut/move/update verified. IDs and destination paragraph retained. Current algorithm preserves scale, not fixed frame dimensions |
 | Crop/rotation/effects/floating pictures | `word-ooxml.js`, `word.js:56` | Unsupported transformations rejected; no silent flattening |
-| Pane closure / companion restart | `sessions.js:97`, README Recovery | Pane-close failure retained a valid new draft and unchanged Word objects in the host test; UI reimport and restart recovery remain Pending; no automatic authorization reconnection |
+| Pane closure / companion restart | `sessions.js:97`, README Recovery | Pane-close failure retained a valid draft and unchanged Word objects; native Save As, Word UI reimport and Edit verified. Clean companion restart plus pane Reload verified; interrupted-save restart recovery remains Pending |
+| Native tab closure / Save As | `src/session.rs:141`, `src/office_addin.rs:77`, `sessions.js:313` | Fixed in `008548d7`; real host releases the reservation while the old process remains running, and reopening loads the saved native bytes |
 | Ribbon Insert/Edit/Update, double-click, SVG preview | manifest, PNG-only protocol | Not implemented in this fork phase |
 
 Records are retained for copied objects and undo; the document limit is 256
@@ -64,12 +69,25 @@ is safe without proving that undo and duplicate references no longer need it.
 
 ## Fork correction
 
-`src/office_addin.rs:76` now atomically persists the latest drawing before reading
+`src/office_addin.rs` (`save_with_timeout`) atomically persists the latest drawing before reading
 `session.json`. Missing, corrupt or symlinked metadata still rejects authorization
 and never emits a new request, but no longer prevents recovery of the latest
 edit. Failed disk writes return errors without claiming recovery.
 `src/office_addin/recovery_tests.rs` adds three regressions; the original receipt
 and stale-ACK checks remain in place.
+
+The continuation reproduced a reservation leak: native Cmd+W replaces the last
+drawing with an Untitled tab while the process remains alive. The existing
+`Binding::finish` lifecycle hook now calls `office_addin::finish` for standalone
+Microsoft 365 bindings. The native writer validates bounded, non-symlink session
+metadata and atomically emits only the close notice; it never changes companion
+authorization or a save receipt. The companion validates notice size, version
+and session identity, then shares the process-exit save barrier. Same-object
+start checks the notice before rejecting a live reservation. An invalid notice
+does not block other objects, and late old-process exit cannot retire a new edit.
+Drafts are never removed by this path. Notice-write failure logs an explicit
+End edit session fallback. Six Node regressions, four native filesystem tests
+and actual tab-close/Save As host retests cover the change.
 
 ## Security boundary
 

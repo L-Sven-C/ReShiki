@@ -104,8 +104,10 @@ has loaded it successfully.
 3. Modify and Save in ReShiki. Wait for confirmed update in the pane and native
    editor. Save the Word document separately; a native ACK is not a DOCX disk-save
    or cloud-sync receipt.
-4. Close the native editor after the confirmed save, or explicitly end its
-   session in the pane before opening the same object again.
+4. After the confirmed save, close the native drawing tab or editor. The pane
+   automatically releases that object's session even if an Untitled window stays
+   open. **End edit session** remains the explicit fallback. Save As detaches the
+   independent file from Word; later saves to it do not update the Word object.
 5. Save, close and reopen the DOCX, reopen the pane, select the object and edit
    again. Check the test report for actual verification of this sequence.
 
@@ -113,12 +115,24 @@ Plain PNG/SVG images without native records are not editable through this route.
 The software does not reconstruct chemistry from pixels. Keep pictures inline
 and free of crop, rotation or picture effects for this phase. Current sizing
 preserves the user's scale relative to the drawing's extent, so adding content
-can enlarge the frame; fixed-frame layout is not yet promised.
+can enlarge the frame; fixed-frame layout is not yet promised. Native 90° rotation
+(changed extent) retained scale in the host test. Moving a whole content control
+with Word Cut/Paste to a new paragraph retained its IDs and subsequent update
+location; this does not establish floating-picture support.
+
+To duplicate an editable Word drawing, use the pane's **Copy editable drawing**,
+place the cursor outside existing drawings, then **Paste editable drawing**.
+Alternatively select the entire content control using its blue title before
+Word Copy/Paste; the copied control receives its own logical ID when edited.
+Copying only the picture produced a plain, noneditable image in the tested Word
+build. Copying the whole object and editing each copy independently were tested;
+cross-document and cross-host clipboard behavior remain separate checks.
 
 ## Recovery
 
 Each edit displays its recovery path. `drawing.rsk` is the native draft;
 `session.json`, `request.json` and `ack.json` identify authorization and saves.
+`closed.json` signals native tab detachment; it is not a save acknowledgement.
 After a failure, do not discard the native window or delete recovery files.
 Use Save As to keep an independent `.rsk`. If the pane closes or the companion
 restarts, open the retained draft explicitly, then import it as a new object in

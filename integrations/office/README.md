@@ -68,13 +68,18 @@ The automated suite covers envelope integrity, bounded worker errors, origin/tok
 
 Record the exact Office build, OS, ReShiki commit, manifest, and evidence for every real-host run:
 
-| Acceptance case                                                              | Word Mac/Windows | Excel Mac/Windows | PowerPoint Mac/Windows |
-| ---------------------------------------------------------------------------- | ---------------- | ----------------- | ---------------------- |
-| Insert → native edit → confirmed Save                                        | Pending          | Pending           | Pending                |
-| Save Office → close → reopen → edit same native drawing                      | Pending          | Pending           | Pending                |
-| Duplicate object → edit one → other stays unchanged                          | Pending          | Pending           | Pending                |
-| Move/resize/rotate (where host supports it) → edit preserves placement       | Pending          | Pending           | Pending                |
-| Native edit open → select another object → Save updates original             | Pending          | Pending           | Pending                |
-| Delete target / close pane / close Office → draft recovery, no false success | Pending          | Pending           | Pending                |
-| Pane Copy/Paste across apps and across Mac/Windows Office files              | Pending          | Pending           | Pending                |
-| Protected document or failed host mutation → retained recovery               | Pending          | Pending           | Pending                |
+Mac results below refer only to Word 16.100.4 on the build and steps in the
+[fork test report](../../docs/development/office-test-report.md); phase 1 remains incomplete.
+
+| Acceptance case | Word Mac | Word Windows | Excel Mac/Windows | PowerPoint Mac/Windows |
+| --- | --- | --- | --- | --- |
+| Insert → native edit → confirmed Save | Pass | Pending | Pending | Pending |
+| Save Office → close → reopen → edit same native drawing | Pass | Pending | Pending | Pending |
+| Duplicate object → edit one → other stays unchanged | Pass, same document/full control | Pending | Pending | Pending |
+| Move/resize/rotate → edit preserves placement | Pass for inline resize, extent change and whole-control move; Word picture rotation rejected | Pending | Pending | Pending |
+| Native edit open → select another object → Save updates original | Pass | Pending | Pending | Pending |
+| Delete target / close pane / close Office → draft recovery, no false success | Partial: pane closure and explicit recovery | Pending | Pending | Pending |
+| Pane Copy/Paste across apps and across Mac/Windows files | Pending | Pending | Pending | Pending |
+| Protected document or failed host mutation → retained recovery | Partial: preflight rejection/retry; rollback Pending | Pending | Pending | Pending |
+| Undo/redo native update, reopen each restored state | Pass, one cycle | Pending | Pending | Pending |
+| Close native drawing tab with process still running, reopen same object | Pass after tab-close fix | Pending | Pending | Pending |
