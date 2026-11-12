@@ -143,6 +143,7 @@ export function makeHandler({ origin, sessions, worker, token = randomBytes(32).
         "/taskpane.css",
         "/protocol.js",
         "/edit-flow.js",
+        "/ribbon.js",
       ];
       if (
         !allowed.includes(resource) &&

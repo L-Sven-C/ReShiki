@@ -25,10 +25,20 @@ const deferred = () => {
   return { promise, resolve };
 };
 
-async function pane(t) {
+async function pane(t, { ribbon = false } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "reshiki-pane-lifecycle-"));
   const fake = fakeOffice("Word");
   fake.dependencies.Office.onReady = async () => {};
+  const commands = new Map();
+  let shows = 0;
+  fake.dependencies.Office.actions = {
+    associate: (name, fn) => commands.set(name, fn),
+  };
+  fake.dependencies.Office.addin = {
+    showAsTaskpane: async () => {
+      shows++;
+    },
+  };
   const original = await envelope("original");
   const inserted = await createHostAdapter(fake.dependencies).insert(original);
   let now = 1000,
@@ -60,11 +70,26 @@ async function pane(t) {
     remove() {
       this.removed = true;
     },
+    focus() {
+      this.focused = true;
+    },
+    scrollIntoView() {
+      this.scrolled = true;
+    },
   });
   const nodes = new Map(
-    ["support", "actions", "status", "sessions", "paste", "file", "edit", "copy", "excel-note"].map(
-      (id) => [id, node(id)],
-    ),
+    [
+      "support",
+      "actions",
+      "status",
+      "sessions",
+      "paste",
+      "file",
+      "edit",
+      "copy",
+      "excel-note",
+      "insert-controls",
+    ].map((id) => [id, node(id)]),
   );
   const replacement = {
     Office: fake.dependencies.Office,
@@ -76,7 +101,8 @@ async function pane(t) {
     },
     document: {
       getElementById: (id) => nodes.get(id),
-      querySelectorAll: () => ["paste", "file", "edit", "copy"].map((id) => nodes.get(id)),
+      querySelectorAll: () =>
+        ["paste", "file", "edit", "copy"].map((id) => nodes.get(id)),
       createElement: node,
     },
     setTimeout: (callback, delay) => {
@@ -97,12 +123,21 @@ async function pane(t) {
           sessions.touch(body.clientId);
           if (url === "/api/heartbeat") value = { active: true };
           else if (url === "/api/edit")
-            value = await sessions.start(body.clientId, body.target, body.envelope);
-          else if (url === "/api/poll") value = await sessions.poll(body.sessionId, body.clientId);
+            value = await sessions.start(
+              body.clientId,
+              body.target,
+              body.envelope,
+            );
+          else if (url === "/api/poll")
+            value = await sessions.poll(body.sessionId, body.clientId);
           else if (url === "/api/fail")
             value = await sessions.fail(body.sessionId, body.clientId, body);
           else if (url === "/api/ack")
-            value = await sessions.acknowledge(body.sessionId, body.clientId, body);
+            value = await sessions.acknowledge(
+              body.sessionId,
+              body.clientId,
+              body,
+            );
           else throw new Error(`Unexpected request ${url}`);
         }
         return { ok: true, json: async () => value };
@@ -112,7 +147,10 @@ async function pane(t) {
     },
   };
   const previous = new Map(
-    Object.keys(replacement).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+    Object.keys(replacement).map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+    ]),
   );
   Object.assign(globalThis, replacement);
   t.after(async () => {
@@ -125,7 +163,17 @@ async function pane(t) {
   });
   await import(`./taskpane.js?lifecycle-${encodeURIComponent(t.name)}`);
   await new Promise((resolve) => setImmediate(resolve));
-  await nodes.get("edit").listeners.click();
+  const command = async (name) => {
+    let completed = 0;
+    await commands.get(name)({
+      completed: () => {
+        completed++;
+      },
+    });
+    assert.equal(completed, 1);
+  };
+  if (ribbon) await command("reshikiEdit");
+  else await nodes.get("edit").listeners.click();
   const session = [...sessions.sessions.values()][0];
   assert.ok(session);
   return {
@@ -137,6 +185,8 @@ async function pane(t) {
     nodes,
     requests,
     events,
+    command,
+    shows: () => shows,
     advance: (milliseconds) => {
       now += milliseconds;
     },
@@ -154,14 +204,64 @@ async function pane(t) {
       await writeFile(session.file, Buffer.from(next.native, "base64"));
       await writeFile(
         path.join(session.directory, "request.json"),
-        JSON.stringify({ version: 1, sessionId: session.id, requestId, revision: next.revision }),
+        JSON.stringify({
+          version: 1,
+          sessionId: session.id,
+          requestId,
+          revision: next.revision,
+        }),
       );
       return next;
     },
-    receipt: async () => JSON.parse(await readFile(path.join(session.directory, "ack.json"))),
+    receipt: async () =>
+      JSON.parse(await readFile(path.join(session.directory, "ack.json"))),
     client: () => clientId,
   };
 }
+
+test("ribbon edit and insertion UI reuse one pane client and the existing save loop", async (t) => {
+  const f = await pane(t, { ribbon: true });
+  await f.command("reshikiInsert");
+  assert.equal(f.nodes.get("file").focused, true);
+  assert.equal(f.nodes.get("insert-controls").scrolled, true);
+  await f.command("reshikiEdit");
+  assert.match(f.nodes.get("status").textContent, /already has an open/);
+  assert.equal(f.sessions.sessions.size, 1);
+  assert.equal(f.requests.filter((r) => r.url === "/api/client").length, 1);
+  await f.save("ribbon-save");
+  await f.runTimer(500);
+  assert.equal((await f.receipt()).requestId, "ribbon-save");
+  assert.equal(f.shows(), 3);
+});
+
+test("ribbon edit refuses a plain selection without launching another session", async (t) => {
+  const f = await pane(t, { ribbon: true });
+  f.fake.state.activeId = null;
+  await f.command("reshikiEdit");
+  assert.match(f.nodes.get("status").textContent, /plain image/);
+  assert.equal(f.requests.filter((r) => r.url === "/api/edit").length, 1);
+});
+
+test("busy ribbon edit does not queue a new selection behind a host update", async (t) => {
+  const f = await pane(t, { ribbon: true });
+  await f.save("busy-ribbon-save");
+  const entered = deferred(),
+    held = deferred();
+  f.intercept(async (url) => {
+    if (url === "/api/ack") {
+      entered.resolve();
+      await held.promise;
+    }
+  });
+  const polling = f.runTimer(500);
+  await entered.promise;
+  await f.command("reshikiEdit");
+  assert.match(f.nodes.get("status").textContent, /operation is in progress/);
+  held.resolve();
+  await polling;
+  assert.equal(f.requests.filter((r) => r.url === "/api/edit").length, 1);
+  assert.equal((await f.receipt()).accepted, true);
+});
 
 test("pane retries a locked target only for a new native Save and retries a lost failure receipt", async (t) => {
   const f = await pane(t);
@@ -182,13 +282,17 @@ test("pane retries a locked target only for a new native Save and retries a lost
   assert.equal(f.session.pending, null);
   assert.equal(f.fake.state.mutations.length, before);
   await assert.rejects(f.receipt(), /ENOENT/);
-  assert.match(f.nodes.get("sessions").children[0].children[0].textContent, /save again/);
+  assert.match(
+    f.nodes.get("sessions").children[0].children[0].textContent,
+    /save again/,
+  );
   f.fake.object().cannotEdit = false;
   const next = await f.save("unlocked-save");
   await f.runTimer(500);
   assert.equal((await f.receipt()).requestId, "unlocked-save");
   assert.equal(
-    (await createHostAdapter(f.fake.dependencies).readSelected()).envelope.revision,
+    (await createHostAdapter(f.fake.dependencies).readSelected()).envelope
+      .revision,
     next.revision,
   );
 });
@@ -200,13 +304,21 @@ test("pane blocks uncertain partial writes and leaves later native saves unackno
     f.fake.object().tag = "changed-by-another-editor";
   });
   await f.runTimer(500);
-  assert.equal(f.requests.find((request) => request.url === "/api/fail").body.retryable, false);
+  assert.equal(
+    f.requests.find((request) => request.url === "/api/fail").body.retryable,
+    false,
+  );
   const mutations = f.fake.state.mutations.length;
-  const polls = f.requests.filter((request) => request.url === "/api/poll").length;
+  const polls = f.requests.filter(
+    (request) => request.url === "/api/poll",
+  ).length;
   await f.save("later-save");
   await f.runTimer(500);
   assert.equal(f.fake.state.mutations.length, mutations);
-  assert.equal(f.requests.filter((request) => request.url === "/api/poll").length, polls);
+  assert.equal(
+    f.requests.filter((request) => request.url === "/api/poll").length,
+    polls,
+  );
   await assert.rejects(f.receipt(), /ENOENT/);
 });
 
@@ -242,7 +354,10 @@ for (const stage of ["Office update", "save acknowledgement"]) {
       f.advance(5000);
       await f.runTimer(5000);
     }
-    assert.equal(f.requests.filter((request) => request.url === "/api/heartbeat").length, 8);
+    assert.equal(
+      f.requests.filter((request) => request.url === "/api/heartbeat").length,
+      8,
+    );
     assert.equal(f.sessions.touch(f.client()).host, "Word");
     held.resolve();
     await polling;

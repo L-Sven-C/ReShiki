@@ -1,6 +1,7 @@
 import { createHostAdapter } from "./host-adapters/index.js";
 import { LIMITS, validateEnvelope } from "./protocol.js";
 import { OperationGate, applyPending, acknowledgeApplied } from "./edit-flow.js";
+import { registerRibbon } from "./ribbon.js";
 
 const element = (id) => document.getElementById(id);
 let token,
@@ -28,6 +29,10 @@ function status(message) {
 }
 async function action(fn) {
   if (stopped) return;
+  if (gate.busy) {
+    status("An Office operation is in progress. Please try again when it finishes.");
+    return;
+  }
   await gate.run(async () => {
     controls(true);
     try {
@@ -89,7 +94,7 @@ element("file").addEventListener("change", () =>
     }
   }),
 );
-element("edit").addEventListener("click", () =>
+const editSelected = () =>
   action(async () => {
     if (!editSupported) throw new Error(editReason || "Update Office before editing this drawing.");
     const current = await selected();
@@ -113,8 +118,8 @@ element("edit").addEventListener("click", () =>
     );
     node.textContent = `Editing in ReShiki. Save there to update this drawing.\nRecovery: ${result.recoveryFile}`;
     status("ReShiki opened. Keep this pane open until the save is confirmed.");
-  }),
-);
+  });
+element("edit").addEventListener("click", editSelected);
 async function poll() {
   if (stopped) return;
   try {
@@ -190,40 +195,58 @@ async function heartbeat() {
 window.addEventListener("pagehide", () => {
   stopped = true;
 });
-try {
-  await Office.onReady();
-  adapter = createHostAdapter({
-    Office,
-    Word: window.Word,
-    Excel: window.Excel,
-    PowerPoint: window.PowerPoint,
-  });
-  const support = await adapter.checkSupport();
-  if (support === false || support?.supported === false)
-    throw new Error(
-      support?.reason || "This Office version does not support editable ReShiki drawings.",
-    );
-  editSupported = support?.canEdit !== false;
-  editReason = support?.editReason || "";
-  token = (
-    await (
-      await fetch("/bootstrap.json", {
-        headers: { "X-ReShiki-Bootstrap": "1" },
-        cache: "no-store",
-        credentials: "omit",
-      })
-    ).json()
-  ).token;
-  clientId = (await api("client", { host: adapter.host })).clientId;
-  element("support").textContent = editSupported
-    ? `Connected to ${adapter.host}`
-    : `Connected to ${adapter.host}. ${support.editReason || "This Office version supports insertion but must be updated before editing drawings."}`;
-  element("actions").hidden = false;
-  element("excel-note").hidden = adapter.host !== "Excel";
-  controls(false);
-  heartbeat();
-  poll();
-} catch (error) {
-  stopped = true;
-  element("support").textContent = error.message;
+async function initialize() {
+  try {
+    await Office.onReady();
+    adapter = createHostAdapter({
+      Office,
+      Word: window.Word,
+      Excel: window.Excel,
+      PowerPoint: window.PowerPoint,
+    });
+    const support = await adapter.checkSupport();
+    if (support === false || support?.supported === false)
+      throw new Error(
+        support?.reason || "This Office version does not support editable ReShiki drawings.",
+      );
+    editSupported = support?.canEdit !== false;
+    editReason = support?.editReason || "";
+    token = (
+      await (
+        await fetch("/bootstrap.json", {
+          headers: { "X-ReShiki-Bootstrap": "1" },
+          cache: "no-store",
+          credentials: "omit",
+        })
+      ).json()
+    ).token;
+    clientId = (await api("client", { host: adapter.host })).clientId;
+    element("support").textContent = editSupported
+      ? `Connected to ${adapter.host}`
+      : `Connected to ${adapter.host}. ${support.editReason || "This Office version supports insertion but must be updated before editing drawings."}`;
+    element("actions").hidden = false;
+    element("excel-note").hidden = adapter.host !== "Excel";
+    controls(false);
+    heartbeat();
+    poll();
+  } catch (error) {
+    stopped = true;
+    element("support").textContent = error.message;
+  }
 }
+const ready = initialize();
+registerRibbon({
+  Office,
+  ready,
+  edit: editSelected,
+  insert: () =>
+    action(async () => {
+      element("insert-controls").scrollIntoView({ block: "start" });
+      element("file").focus();
+      status(
+        "插入结构：选择 .rsk 文件，或点击 Paste editable drawing。请先将 Word 光标放在现有结构之外。",
+      );
+    }),
+  report: status,
+});
+await ready;

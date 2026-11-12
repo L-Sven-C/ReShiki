@@ -30,21 +30,70 @@ export const HOSTS = [
     id: "59b424f2-7de1-4c81-aa8b-f9273f0d06b4",
   },
 ];
+function wordCommands(origin) {
+  const buttons = [
+    [
+      "Insert",
+      "插入结构",
+      "打开插入选项：选择 .rsk 文件或粘贴可编辑结构。",
+      "reshikiInsert",
+    ],
+    [
+      "Edit",
+      "编辑选中结构",
+      "在 ReShiki 中编辑 Word 当前选中的可编辑结构。",
+      "reshikiEdit",
+    ],
+    ["Open", "打开窗格", "显示 ReShiki 窗格，查看编辑状态和恢复文件。", null],
+  ];
+  return `
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xsi:type="VersionOverridesV1_0">
+    <Requirements><bt:Sets DefaultMinVersion="1.1"><bt:Set Name="WordApi" MinVersion="1.4"/><bt:Set Name="SharedRuntime" MinVersion="1.1"/></bt:Sets></Requirements>
+    <Hosts><Host xsi:type="Document">
+      <Runtimes><Runtime resid="ReShiki.Page" lifetime="long"/></Runtimes>
+      <DesktopFormFactor>
+        <FunctionFile resid="ReShiki.Page"/>
+        <ExtensionPoint xsi:type="PrimaryCommandSurface">
+          <CustomTab id="ReShiki.Tab"><Group id="ReShiki.Drawings">
+            <Label resid="ReShiki.Group"/>
+            <Icon><bt:Image size="16" resid="ReShiki.Icon16"/><bt:Image size="32" resid="ReShiki.Icon32"/><bt:Image size="80" resid="ReShiki.Icon80"/></Icon>
+${buttons
+  .map(
+    ([id, , , fn]) => `            <Control xsi:type="Button" id="ReShiki.${id}">
+              <Label resid="ReShiki.${id}.Label"/>
+              <Supertip><Title resid="ReShiki.${id}.Label"/><Description resid="ReShiki.${id}.Help"/></Supertip>
+              <Icon><bt:Image size="16" resid="ReShiki.Icon16"/><bt:Image size="32" resid="ReShiki.Icon32"/><bt:Image size="80" resid="ReShiki.Icon80"/></Icon>
+              ${fn ? `<Action xsi:type="ExecuteFunction"><FunctionName>${fn}</FunctionName></Action>` : '<Action xsi:type="ShowTaskpane"><SourceLocation resid="ReShiki.Page"/></Action>'}
+            </Control>`,
+  )
+  .join("\n")}
+          </Group><Label resid="ReShiki.Tab.Label"/></CustomTab>
+        </ExtensionPoint>
+      </DesktopFormFactor>
+    </Host></Hosts>
+    <Resources>
+      <bt:Images>${[16, 32, 80].map((size) => `<bt:Image id="ReShiki.Icon${size}" DefaultValue="${origin}/assets/icon-${size}.png"/>`).join("")}</bt:Images>
+      <bt:Urls><bt:Url id="ReShiki.Page" DefaultValue="${origin}/taskpane.html"/></bt:Urls>
+      <bt:ShortStrings><bt:String id="ReShiki.Tab.Label" DefaultValue="ReShiki"/><bt:String id="ReShiki.Group" DefaultValue="化学结构"/>${buttons.map(([id, label]) => `<bt:String id="ReShiki.${id}.Label" DefaultValue="${label}"/>`).join("")}</bt:ShortStrings>
+      <bt:LongStrings>${buttons.map(([id, , help]) => `<bt:String id="ReShiki.${id}.Help" DefaultValue="${help}"/>`).join("")}</bt:LongStrings>
+    </Resources>
+  </VersionOverrides>`;
+}
 export function manifest(host, port = 43127) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535)
     throw new Error("Invalid localhost port");
   const origin = `https://localhost:${port}`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="TaskPaneApp">
-  <Id>${host.id}</Id><Version>1.0.0.0</Version><ProviderName>ReShiki</ProviderName><DefaultLocale>en-US</DefaultLocale>
+  <Id>${host.id}</Id><Version>${host.name === "word" ? "1.1.0.0" : "1.0.0.0"}</Version><ProviderName>ReShiki</ProviderName><DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="ReShiki"/><Description DefaultValue="Insert and edit native ReShiki molecular drawings with the local companion."/>
   <IconUrl DefaultValue="${origin}/assets/icon-32.png"/><HighResolutionIconUrl DefaultValue="${origin}/assets/icon-80.png"/>
   <SupportUrl DefaultValue="https://github.com/Ameyanagi/ReShiki/issues"/>
   <AppDomains><AppDomain>${origin}</AppDomain></AppDomains>
   <Hosts><Host Name="${host.host}"/></Hosts>
-  <Requirements><Sets DefaultMinVersion="1.1"><Set Name="${host.api}" MinVersion="${host.version}"/></Sets></Requirements>
+  <Requirements><Sets DefaultMinVersion="1.1"><Set Name="${host.api}" MinVersion="${host.version}"/>${host.name === "word" ? '<Set Name="SharedRuntime" MinVersion="1.1"/>' : ""}</Sets></Requirements>
   <DefaultSettings><SourceLocation DefaultValue="${origin}/taskpane.html"/></DefaultSettings>
-  <Permissions>ReadWriteDocument</Permissions>
+  <Permissions>ReadWriteDocument</Permissions>${host.name === "word" ? wordCommands(origin) : ""}
 </OfficeApp>
 `;
 }

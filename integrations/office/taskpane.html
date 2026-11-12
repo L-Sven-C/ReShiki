@@ -14,13 +14,15 @@
       <p>Editable molecular drawings</p>
       <p id="support" role="status">Connecting to Office…</p>
       <section id="actions" hidden>
-        <button id="paste">Paste editable drawing</button>
-        <label class="file"
-          >Insert a drawing file<input
-            id="file"
-            type="file"
-            accept=".rsk,.reshiki,application/json"
-        /></label>
+        <div id="insert-controls">
+          <button id="paste">Paste editable drawing</button>
+          <label class="file"
+            >Insert a drawing file<input
+              id="file"
+              type="file"
+              accept=".rsk,.reshiki,application/json"
+          /></label>
+        </div>
         <button id="edit">Edit selected drawing</button>
         <button id="copy">Copy editable drawing</button>
         <p>

@@ -883,6 +883,10 @@ test("Office launch metadata loads only task-pane HTML and cannot relax API or r
   );
   assert.equal(opaque.status, 200);
   assert.equal(opaque.body, html);
+  const ribbon = await request("/ribbon.js");
+  assert.equal(ribbon.status, 200);
+  assert.match(ribbon.headers["content-type"], /^text\/javascript/);
+  assert.equal(ribbon.body, await readFile(new URL("./ribbon.js", import.meta.url), "utf8"));
   for (const query of [
     "?unknown=1",
     queries[0] + "&redirect=https://evil.test",
@@ -909,6 +913,7 @@ test("Office launch metadata loads only task-pane HTML and cannot relax API or r
     "/api/heartbeat",
     "/api/client",
     "/taskpane.js",
+    "/ribbon.js",
     "/taskpane.css",
     "/host-adapters/word.js",
     "/assets/icon-32.png",
