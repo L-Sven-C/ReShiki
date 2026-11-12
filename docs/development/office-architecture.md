@@ -47,14 +47,14 @@ are not evidence of a successful Word desktop round trip. See
 | --- | --- | --- |
 | Native molecule / complete drawing insertion | `taskpane.js:61`, `word.js:155`, native preview worker | Implemented; current UX is native Copy → pane Paste or `.rsk` file selection, not a native one-click Word command |
 | Selected object → native editor | `word.js:134`, `sessions.js:119` | Implemented; live-host acceptance recorded separately |
-| Selection-independent update | `word.js:242`, `word.js:250`, `common.js:72` | Implemented and mocked; uses captured content-control ID |
+| Selection-independent update | `word.js:242`, `word.js:250`, `common.js:72` | Implemented; controlled Mac Word save with another object selected updated only the captured control (test report, 04/05 evidence) |
 | PNG + native version readback and exact ACK | `edit-flow.js:19`, `sessions.js:221`, `src/office_addin.rs` | Implemented; ACK means document model update, not disk save or cloud sync |
 | Rollback and recoverable drafts | `word.js:282`, `sessions.js:276`, `src/office_addin.rs` | Implemented; metadata-loss draft retention fixed in `3f6b43d0`, with three new native regressions |
 | Same-document duplicate independence | `word.js:214`, immutable records in `common.js` | Implemented; cross-document ordinary image paste is not guaranteed |
-| DOCX persistence | document-scoped custom XML + tagged control | Mechanism implemented; close/reopen, AutoSave and undo/redo need actual host evidence |
+| DOCX persistence | document-scoped custom XML + tagged control | Close/reopen/re-edit verified on the tested Mac Word build; AutoSave and undo/redo remain Pending |
 | Layout retention | `word.js:122`, `word-ooxml.js:192`, `common.js:354` | Partial: inline pictures only; original scale is carried forward, so changed intrinsic extent can change frame dimensions |
 | Crop/rotation/effects/floating pictures | `word-ooxml.js`, `word.js:56` | Unsupported transformations rejected; no silent flattening |
-| Pane closure / companion restart | `sessions.js:97`, README Recovery | Draft recovery only; no automatic authorization reconnection |
+| Pane closure / companion restart | `sessions.js:97`, README Recovery | Pane-close failure retained a valid new draft and unchanged Word objects in the host test; UI reimport and restart recovery remain Pending; no automatic authorization reconnection |
 | Ribbon Insert/Edit/Update, double-click, SVG preview | manifest, PNG-only protocol | Not implemented in this fork phase |
 
 Records are retained for copied objects and undo; the document limit is 256
