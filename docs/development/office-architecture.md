@@ -60,7 +60,8 @@ are not evidence of a successful Word desktop round trip. See
 | Crop/rotation/effects/floating pictures | `word-ooxml.js`, `word.js:56` | Unsupported transformations rejected; no silent flattening |
 | Pane closure / companion restart | `sessions.js:97`, README Recovery | Pane-close failure retained a valid draft and unchanged Word objects; native Save As, Word UI reimport and Edit verified. Clean companion restart plus pane Reload verified; interrupted-save restart recovery remains Pending |
 | Native tab closure / Save As | `src/session.rs:141`, `src/office_addin.rs:77`, `sessions.js:313` | Fixed in `008548d7`; real host releases the reservation while the old process remains running, and reopening loads the saved native bytes |
-| Ribbon Insert/Edit/Update, double-click, SVG preview | manifest, PNG-only protocol | Not implemented in this fork phase |
+| Ribbon insertion/edit/pane entry points | Word manifest, `setup.js`, `ribbon.js`, `taskpane.js` | Word-only CustomTab; shared runtime reuses existing file/clipboard insertion, selected-object edit and polling. See host report for acceptance |
+| Double-click and SVG preview | PNG-only protocol | Not implemented |
 
 Records are retained for copied objects and undo; the document limit is 256
 records / 64 MiB XML (`common.js:9`). Repeated saves consume versions, so the limit
@@ -88,6 +89,28 @@ does not block other objects, and late old-process exit cannot retire a new edit
 Drafts are never removed by this path. Notice-write failure logs an explicit
 End edit session fallback. Six Node regressions, four native filesystem tests
 and actual tab-close/Save As host retests cover the change.
+
+## Word ribbon entry points
+
+Manifest version 1.1.0.0 retains the add-in ID and introduces `CustomTab` under
+`PrimaryCommandSurface`. Insert and Edit are `ExecuteFunction` commands;
+Open Pane is `ShowTaskpane`. All reference one task-pane page with a long-lived
+SharedRuntime 1.1, and no `TaskpaneId`. Excel and PowerPoint manifests are unchanged.
+`ribbon.js` registers the two command handlers before asynchronous initialization
+finishes, waits for readiness and pane visibility, and always completes the
+Office command event. `taskpane.js` routes Edit through the same operation gate
+and exact-target workflow as the pane button. A busy operation is reported and
+not queued against a later document selection. Insert exposes existing controls
+without mutating the document until the user chooses a file or editable paste.
+
+This uses Microsoft's [shared runtime configuration](https://learn.microsoft.com/en-us/office/dev/add-ins/develop/configure-your-add-in-to-use-a-shared-runtime)
+and [pane visibility API](https://learn.microsoft.com/en-us/office/dev/add-ins/develop/show-hide-add-in).
+Distinct ShowTaskpane URLs can replace pane contents, so command routing never
+navigates to a per-action URL or creates another pane client. The runtime may
+remain alive while the pane is hidden; document closure or unloading still ends
+it. No auto-start-on-document-open behavior is enabled. Companion authentication,
+loopback binding, exact save ACKs and recovery storage remain unchanged; the
+static resource allowlist adds only `/ribbon.js`.
 
 ## Security boundary
 

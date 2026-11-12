@@ -3,7 +3,8 @@
 Run date: 2026-11-12 (Asia/Singapore). **Phase 1 acceptance is incomplete.**
 Real Word tests now cover repeat editing, independent copied objects, undo/redo,
 inline resizing, changed drawing extent, movement between paragraphs, rejected
-updates and explicit recovery.
+updates and explicit recovery. The independent Word ribbon and its native
+editing path were also tested; details and upgrade limitations are recorded below.
 A native-tab lifecycle defect was reproduced and fixed: closing a drawing tab
 while the app stayed open previously left its object reserved. The patched app
 released the reservation and reopened the same object with identical native data.
@@ -18,6 +19,7 @@ partial host-mutation rollback remain unvalidated; this is not complete acceptan
 | Initial native app source, cases 01–20 | `3f6b43d008bbb5f8cee0aaec2fab27b39c050b80` |
 | Initial companion source | `642055a55f82fbc1d4681cea81301838449029cf` (unchanged upstream runtime) |
 | Tab-close fix / rebuilt app and companion, cases 21–25 | `008548d706b3e9995b1d9790ebc8db73bce8e6a8` |
+| Ribbon add-in / companion, cases 26–28 | `174665b7` (native executable remains `008548d7`) |
 | Fork branch | `L-Sven-C/ReShiki`, `feature/macos-word-integration` |
 | Host | Apple Silicon, macOS 27.2, build 26B123 |
 | Word | Microsoft Word for Mac 16.100.4, Mac App Store installation |
@@ -164,6 +166,65 @@ restart; it reconnected without closing Word. That is a clean restart with no
 active save, not evidence of interrupted-save or crash recovery. Test drawings,
 DOCX snapshots and full session data remain local and are not pushed to GitHub.
 
+## Independent ReShiki ribbon: 2026-11-12
+
+At the user's explicit request, added the ribbon before the remaining phase-1
+acceptance cases. Code under test: `174665b7`; native app `008548d7`.
+Host: the same Apple Silicon macOS 27.2 (26B123), Word 16.100.4 listed above.
+Installed Word manifest version `1.1.0.0`, SHA-256
+`f1221abbaedbfebf837fa3b0252a21f496385e6bab775a52961986fcb7144296`.
+Both the private generated manifest and Word sideload copy match this hash.
+The user manually activated the updated Developer Add-ins entry; subsequent
+ribbon interactions below were automated through the actual Word UI.
+
+| Check | Result | Local evidence |
+| --- | --- | --- |
+| Full `cd integrations/office && node --test` | **172 passed, 0 failed** | `ribbon-node.log` |
+| `cargo test --locked -p reshiki --lib office_addin` | **12 passed**, 388 filtered | `ribbon-rust.log` |
+| `oxlint --deny-warnings website integrations/office packages/editor` | Passed | `ribbon-lint.log` |
+| Microsoft `office-addin-manifest validate integrations/office/manifests/word.xml` | Valid; schema and add-in commands accepted | `ribbon-manifest.log` |
+| `node scripts/check_docs_tree.mjs`; `git diff --check` | Passed; 902 referenced assets, no whitespace errors | `ribbon-docs.log` |
+
+The eight new Node tests cover command readiness/visibility/completion, failure
+handling, shared resources and custom port generation, checked-in manifests,
+one client/update loop, same-object duplicate refusal, plain-image refusal and
+busy-command non-queuing. HTTP tests also check serving `ribbon.js` and rejecting
+Office launch metadata on that resource. Mocks are not the following host tests.
+No native source changed in this ribbon patch; this is not a new full-workspace
+Rust run or a full Bun build/format pass.
+
+| Real-host steps | Actual observation / evidence | Result |
+| --- | --- | --- |
+| Activate add-in → click ReShiki tab → Open pane → close pane → Open pane | Three Chinese buttons visible; **打开窗格** restores Connected to Word | Pass |
+| Cursor outside drawings → **插入结构** → choose local ethanol `.rsk` → Word Save | `26-ribbon-insert`: 8 pictures, 7 editable controls; all six prior objects unchanged. `26-ribbon-insert-result.json` | Pass |
+| Select inserted image → close pane → **编辑选中结构** | Pane opens, native editor launches. Recovery draft hash equals embedded inserted native hash; no guessed structure | Pass |
+| Native rotate 180°; Word selects first object; hide pane → Open pane → Insert button | Same original recovery session remains displayed; Insert only reveals controls and does not replace runtime or add a picture | Pass |
+| Explicitly click Edit on the other object, then save the original native window → Word Save | Separate second session is allowed; original session updates only its captured target. `27-ribbon-update-result.json`: count remains 8; other six objects unchanged; same object/control ID; native, preview and displayed media changed. ACK accepted with exact native revision | Pass for isolation |
+| Compare saved frame before/after | 561240 × 267480 → 560705 × 266615 EMU (about 0.0421 × 0.0681 pt difference). Dimensions are not byte-exact | Pass with recorded sub-0.07 pt difference; no exact-frame promise |
+| End sessions → select plain picture → ribbon Edit | Explicit “A plain image does not contain editable drawing data”; no new session shown | Pass |
+| Word Save → close DOCX → reopen → dismiss stale pane → select updated object → ribbon Edit | Ribbon persists, native draft hash matches `27-ribbon-update` exactly. `28-ribbon-reopen-result.json` | Pass with upgrade workaround below |
+| Click ribbon Edit again on the same object | “This drawing already has an open edit session”; same single session remains | Pass |
+
+Raw packages/results `26-*`–`28-*` and `ribbon-host-observations.txt` are in the
+private evidence directory used above. UI screenshots were inspected in the
+interactive run; no screenshots or user documents are committed. Host test
+sessions were explicitly ended, recovery drafts retained, and the DOCX saved.
+
+**Upgrade issue remains:** the older acceptance DOCX still contains a developer
+`we:reference version="1.0.0.0"` after installing manifest `1.1.0.0`. Word reopens
+an unavailable-add-in pane for that reference. Closing it and using the new
+**ReShiki → 编辑选中结构** successfully launches the new runtime without the
+Developer Add-ins menu. Native payloads survive unchanged. Automatic migration
+of this host-owned reference and fresh-document activation need separate tests;
+this upgrade experience is not considered seamless.
+
+SharedRuntime changes the meaning of pane closure: hiding/reopening the new pane
+preserved the live session in this run. Earlier case 06 tested runtime loss with
+the old non-shared manifest. It must not be presented as a failure test of the new
+pane's close button. Saving while hidden, killing the new runtime, and recovering
+an in-flight save after Word/companion crash remain Pending. The tested update
+was saved after the pane was visible again. Keep it visible to read confirmation.
+
 ## Observed image-quality limitation
 
 A direct package inspection found that this Word save **downsampled** the
@@ -191,5 +252,6 @@ settings were changed during this run.
 4. Test complete synthesis routes and complex stereochemical structures across
    save/reopen and undo histories; investigate PNG downsampling/print quality.
 5. Correct the reused LibreOffice worker error prefix and improve ambiguous
-   native tab titles (upstream #1119). Ribbon actions and SVG remain later phases;
+   native tab titles (upstream #1119). Migrate stale developer manifest references
+   and test fresh-document ribbon activation; SVG remains a later phase;
    no Windows OLE-style double-click capability is assumed.

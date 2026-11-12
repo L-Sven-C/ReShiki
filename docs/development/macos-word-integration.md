@@ -96,6 +96,36 @@ has loaded it successfully.
 
 ## Editing workflow
 
+The Word manifest now declares a **ReShiki** ribbon tab with three commands:
+
+- **插入结构** opens the existing pane, scrolls to the insertion controls and
+  focuses the file selector. Choose a `.rsk` file or use **Paste editable drawing**;
+  place the document cursor outside existing objects first. This command does
+  not automatically read the clipboard or invent an empty chemical drawing.
+- **编辑选中结构** opens the pane and starts the same selected-object native edit
+  used by **Edit selected drawing**. Ordinary pictures are still refused.
+- **打开窗格** displays the shared pane and its current sessions.
+
+The Word runtime uses [SharedRuntime 1.1](https://learn.microsoft.com/en-us/javascript/api/requirement-sets/common/shared-runtime-requirement-sets)
+(Microsoft's documented Mac Word floor is 16.61, below the existing WordApi 1.4 floor). Ribbon commands and the pane
+share one client and save loop. There is no second native-edit implementation.
+The final test report records which of these behaviors were actually verified.
+
+For an existing development installation, save and quit Word before replacing
+the **same** sideload manifest with `integrations/office/manifests/word.xml`
+(default port 43127). Back up the old manifest outside the `wef` directory first.
+Also replace the generated `manifests/word.xml` in your private setup directory.
+For a custom port, regenerate with `manifest(HOSTS[0], port)` from `setup.js`;
+do not replace the private configuration or certificates. Setup deliberately
+refuses to overwrite a differing manifest. Restart the companion and Word,
+then activate **Home → Add-ins → Developer Add-ins → ReShiki** once if needed.
+An old document may refer to the previous manifest version and display an
+unavailable-add-in pane, including on subsequent reopens. Close that stale pane
+and use the new **ReShiki → 编辑选中结构** button; this recovery path was verified
+without activating the developer menu again. The old test DOCX retained a
+`1.0.0.0` developer reference after installing `1.1.0.0`; automatic migration of
+that host-owned reference is unresolved. The native data remains embedded in the DOCX.
+
 1. Draw in the native app, Copy, then choose **Paste editable drawing** in the
    Word pane. Alternatively use **Insert a drawing file** with a native `.rsk`.
    A complete route remains one editable drawing, including its native objects.
@@ -134,9 +164,12 @@ Each edit displays its recovery path. `drawing.rsk` is the native draft;
 `session.json`, `request.json` and `ack.json` identify authorization and saves.
 `closed.json` signals native tab detachment; it is not a save acknowledgement.
 After a failure, do not discard the native window or delete recovery files.
-Use Save As to keep an independent `.rsk`. If the pane closes or the companion
-restarts, open the retained draft explicitly, then import it as a new object in
-Word; no automatic reconnection to a possibly different document occurs.
+Use Save As to keep an independent `.rsk`. The new Word shared runtime can remain
+alive when its pane is hidden: hide/reopen preserved the same active session in
+the host test. This is distinct from unloading the runtime or closing Word.
+After runtime loss or companion restart, open the retained draft explicitly,
+then import it as a new object in Word; no automatic reconnection to a possibly
+different document occurs. Keep the pane visible until the save is confirmed.
 
 If Word is locked or an update is safely rolled back, resolve the error and
 Save again in ReShiki. An uncertain partial update requires explicit recovery.
@@ -145,8 +178,10 @@ Do not infer success merely because a PNG or XML part was written.
 
 ## Next phases
 
-The first gate is the real Word test matrix. Only after that gate passes should
-work proceed to ribbon commands, fewer clicks, window activation, or SVG.
+The first gate remains the real Word test matrix. The three ribbon commands
+were implemented early at the user's explicit request and tested on the recorded
+Mac Word build; they do not complete phase 1. Finish the remaining reliability
+cases before further window-activation work or SVG.
 No custom double-click/OLE behavior is assumed. The documented Office.js event
 surface does not provide that activation contract; VBA/macros are a separate
 potential investigation, not part of the current implementation.

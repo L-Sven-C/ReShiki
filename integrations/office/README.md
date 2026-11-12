@@ -4,6 +4,17 @@ This optional Office task pane stores an editable native ReShiki drawing and a P
 
 For this fork's macOS Word work, see the [development setup](../../docs/development/macos-word-integration.md), [source audit](../../docs/development/office-architecture.md), and [test report](../../docs/development/office-test-report.md). The report separates observed desktop results from automated coverage and pending acceptance cases.
 
+## Word ribbon
+
+Word now provides a **ReShiki** tab: **插入结构** shows the existing file/clipboard
+insertion controls, **编辑选中结构** opens the selected native drawing, and
+**打开窗格** displays the current pane. Commands share its edit sessions and update
+loop. Insertion still requires choosing a `.rsk` file or **Paste editable drawing**.
+The Word manifest additionally requires SharedRuntime 1.1. Excel and PowerPoint
+keep their existing pane entry points. See the [Mac installation and upgrade
+instructions](../../docs/development/macos-word-integration.md#editing-workflow)
+for replacing an older development manifest and handling stale document references.
+
 ## Editing and saving
 
 1. Start the companion, open the add-in in your Office file, and keep the pane open.
@@ -54,7 +65,7 @@ An update rejected before changing the target, or fully rolled back and verified
 
 Only one native edit per logical drawing ID is allowed across all panes in a companion process. Identical drawing IDs in cloned documents conservatively share that reservation until the first edit ends. Expired panes release their client capacity; starting a new edit retires their abandoned reservations without deleting recovery files.
 
-Closing a task pane or restarting the companion abandons its live authorization; it never silently reconnects an old edit to a different Office document. Reopen the pane and explicitly insert the recovery `.rsk` file as a new object. Do not delete recovery files until the Office document has been saved and its drawing verified. The companion does not delete drafts automatically and does not override Office's close behavior. Inspect the recovery directory periodically; document-version payloads and retained drafts increase storage usage.
+Unloading a task-pane runtime or restarting the companion abandons its live authorization; it never silently reconnects an old edit to a different Office document. With the Word shared runtime, hiding and reopening the pane can preserve the live session; this was tested, but saving while hidden was not. After actual runtime loss, reopen the pane and explicitly insert the recovery `.rsk` file as a new object. Do not delete recovery files until the Office document has been saved and its drawing verified. The companion does not delete drafts automatically and does not override Office's close behavior. Inspect the recovery directory periodically; document-version payloads and retained drafts increase storage usage.
 
 Limits are 16 MiB native drawing, 8 MiB PNG, 32 megapixels, 32 task panes/sessions per companion process, 15 seconds per worker, and 30 seconds without a pane heartbeat. These are local ReShiki safeguards, not Microsoft limits. API requests require exact localhost Host and Origin, a runtime token, a per-pane capability, JSON content type, and bounded bodies. No permissive CORS, document-supplied commands, or arbitrary filesystem routes are exposed. Keep the config, key, and recovery directory private to your operating-system account (Windows ACLs, or Unix modes 0700/0600).
 
@@ -78,7 +89,7 @@ Mac results below refer only to Word 16.100.4 on the build and steps in the
 | Duplicate object → edit one → other stays unchanged | Pass, same document/full control | Pending | Pending | Pending |
 | Move/resize/rotate → edit preserves placement | Pass for inline resize, extent change and whole-control move; Word picture rotation rejected | Pending | Pending | Pending |
 | Native edit open → select another object → Save updates original | Pass | Pending | Pending | Pending |
-| Delete target / close pane / close Office → draft recovery, no false success | Partial: pane closure and explicit recovery | Pending | Pending | Pending |
+| Delete target / close pane / close Office → draft recovery, no false success | Partial: old non-shared pane closure/recovery; new shared pane hide/reopen retains session | Pending | Pending | Pending |
 | Pane Copy/Paste across apps and across Mac/Windows files | Pending | Pending | Pending | Pending |
 | Protected document or failed host mutation → retained recovery | Partial: preflight rejection/retry; rollback Pending | Pending | Pending | Pending |
 | Undo/redo native update, reopen each restored state | Pass, one cycle | Pending | Pending | Pending |
