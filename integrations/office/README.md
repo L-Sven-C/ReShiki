@@ -6,14 +6,18 @@ For this fork's macOS Word work, see the [development setup](../../docs/developm
 
 ## Word ribbon
 
-Word now provides a **ReShiki** tab: **插入结构** shows the existing file/clipboard
-insertion controls, **编辑选中结构** opens the selected native drawing, and
-**打开窗格** displays the current pane. Commands share its edit sessions and update
-loop. Insertion still requires choosing a `.rsk` file or **Paste editable drawing**.
-The Word manifest additionally requires SharedRuntime 1.1. Excel and PowerPoint
-keep their existing pane entry points. See the [Mac installation and upgrade
-instructions](../../docs/development/macos-word-integration.md#editing-workflow)
-for replacing an older development manifest and handling stale document references.
+Word provides an English **ReShiki** tab with **Insert Structure**, **Edit
+Structure**, **Open Pane** and **Preferences**, grouped into Drawings and Tools
+with distinct icons. Insertion uses the existing file/clipboard controls.
+Preferences supports English/Simplified Chinese, compact spacing and workflow
+tips. It shares the current editing runtime, so changing views does not drop edits.
+
+Pane language applies immediately and is stored locally. Ribbon language uses
+an optional configured `wordManifest` installation path and requires a Word
+restart/re-activation after applying. See the [Mac installation and upgrade
+instructions](../../docs/development/macos-word-integration.md#editing-workflow).
+The Word manifest requires SharedRuntime 1.1. Excel/PowerPoint retain their pane
+entry points; their ribbon-language control is not available.
 
 ## Editing and saving
 

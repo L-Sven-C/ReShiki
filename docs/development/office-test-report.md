@@ -225,6 +225,55 @@ pane's close button. Saving while hidden, killing the new runtime, and recoverin
 an in-flight save after Word/companion crash remain Pending. The tested update
 was saved after the pane was visible again. Keep it visible to read confirmation.
 
+## English UI and Preferences follow-up: 2026-11-12
+
+The user requested a more compact interface informed by Zotero, Preferences,
+and configurable languages. The actual Zotero tab in Word was inspected:
+primary commands, distinct icons and separate settings actions informed the new
+layout. No Zotero code or artwork was copied. Word chooses final button sizing;
+this Office.js manifest does not expose RibbonX small/large button controls.
+
+The updated manifest defaults to English, adds a Preferences command and separates
+Drawings from Tools. The pane uses compact action rows, short guidance and a
+settings view. English/Simplified Chinese pane language, spacing and tips are
+local preferences. A separately applied ribbon language changes only an optional,
+explicitly configured sideload manifest. Editing/session/update logic is reused.
+
+| Check | Result | Local log |
+| --- | --- | --- |
+| `cd integrations/office && node --test` | **179 passed, 0 failed** | `preferences-node-final.log` |
+| Preferences/resource endpoint tests after adding PNG dimension checks | **6 passed** | `preferences-resources.log` |
+| JS oxlint gate | Passed | `preferences-lint.log` |
+| Microsoft manifest validator | Valid | `preferences-manifest.log` |
+| Documentation asset check | Passed, 902 referenced assets | `preferences-docs.log` |
+
+New regressions cover validated settings persistence, denied/corrupt storage,
+language re-rendering, serialized manifest writes, fixed IDs/resources, rejection
+of custom files/symlinks/request-supplied paths, Origin/token/Word client checks,
+and live-session save ACK after opening Preferences and switching languages.
+All twelve command PNGs have their declared dimensions and are served from the
+allowlist; Office launch query metadata remains forbidden on preferences.js.
+No native Rust source changed; the previous 12-test native result is not a new run.
+
+Real-host follow-up on **2026-11-13 (Asia/Singapore)**: code `f1a7e435`,
+Word 16.100.4 / macOS 27.2 (26B123), native app `008548d7`.
+The user activated the updated Developer Add-ins entry. The following checks
+were then performed through the actual Word UI, not a browser mock.
+
+| Steps | Actual result / evidence | Status |
+| --- | --- | --- |
+| Open ReShiki tab → Preferences | English Insert Structure / Edit Structure / Open Pane / Preferences, two groups; settings page connects to Word | Pass |
+| Pane language English → 简体中文 | Labels, connection status and instructions change immediately; English ribbon remains independent | Pass |
+| Disable compact spacing, enable workflow tips → Done → Preferences | Tips appear in drawing view; both values remain set | Pass |
+| Select last structure → Edit → native rotate 180° → Preferences → pane language English → native Save while Preferences remains open → Done → Word Save | `29-preferences-before`, `30-preferences-after`, `30-preferences-update-result.json`: exact accepted ACK matches new embedded native revision. Same logical/control IDs, all six other objects unchanged, eight pictures before/after; native and displayed image changed | Pass |
+| End edit → Ribbon language 简体中文 → Apply | Restart guidance shown. Installed sideload file exactly equals generated Chinese manifest; no config, certificate or drawing content changed by this operation | Pass for application; activation below |
+| Save → quit Word → restart and reopen DOCX | Old-document unavailable pane persists; the updated developer entry requires manual activation | Observed limitation |
+
+**Pending:** Chinese ribbon activation and restoration to English, preference
+persistence after restart, and final visual screenshot review. The known
+old-document unavailable-pane behavior remains separate from native data
+persistence. Private evidence remains outside Git.
+
 ## Observed image-quality limitation
 
 A direct package inspection found that this Word save **downsampled** the

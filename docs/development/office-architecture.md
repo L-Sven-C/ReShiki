@@ -93,10 +93,11 @@ and actual tab-close/Save As host retests cover the change.
 ## Word ribbon entry points
 
 Manifest version 1.1.0.0 retains the add-in ID and introduces `CustomTab` under
-`PrimaryCommandSurface`. Insert and Edit are `ExecuteFunction` commands;
-Open Pane is `ShowTaskpane`. All reference one task-pane page with a long-lived
+`PrimaryCommandSurface`. Insert, Edit, Open Pane and Preferences are `ExecuteFunction` commands.
+Each first shows the shared pane; Open Pane returns to the drawing view and
+Preferences switches views without navigating or unloading the runtime. All reference one task-pane page with a long-lived
 SharedRuntime 1.1, and no `TaskpaneId`. Excel and PowerPoint manifests are unchanged.
-`ribbon.js` registers the two command handlers before asynchronous initialization
+`ribbon.js` registers the four command handlers before asynchronous initialization
 finishes, waits for readiness and pane visibility, and always completes the
 Office command event. `taskpane.js` routes Edit through the same operation gate
 and exact-target workflow as the pane button. A busy operation is reported and
@@ -110,7 +111,25 @@ navigates to a per-action URL or creates another pane client. The runtime may
 remain alive while the pane is hidden; document closure or unloading still ends
 it. No auto-start-on-document-open behavior is enabled. Companion authentication,
 loopback binding, exact save ACKs and recovery storage remain unchanged; the
-static resource allowlist adds only `/ribbon.js`.
+static resource allowlist adds `/ribbon.js`, `/preferences.js` and the fixed
+16/32/80 PNG command icon names.
+
+`preferences.js` persists only a validated language, compact-spacing boolean and
+hint-visibility boolean in local webview storage. User-facing session messages
+are re-rendered without altering target IDs, envelopes, receipts or polling.
+Untranslated diagnostic details remain intact. Settings view changes never stop
+the heartbeat or create a second client.
+
+Office.js manifest labels are installation resources; no unsupported runtime
+label API is assumed. `setup.js` can generate English (default) or Simplified
+Chinese using `manifest(HOSTS[0], port, language)`. The optional trusted local
+`wordManifest` config path enables `/api/ribbon-language`, behind existing
+Origin/token/client checks and a Word-host check. Requests contain only a language.
+`companion/ribbon-language.js` serializes updates, checks for an exact known
+manifest, rejects symlinks/custom content and atomically replaces that file with
+a generated manifest of the same ID/version/runtime/permissions. No arbitrary
+XML or path comes from the pane or document. Restart/re-activation may be needed;
+this service does not close Word or change global Office language settings.
 
 ## Security boundary
 

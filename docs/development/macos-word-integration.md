@@ -96,15 +96,35 @@ has loaded it successfully.
 
 ## Editing workflow
 
-The Word manifest now declares a **ReShiki** ribbon tab with three commands:
+The Word manifest defaults to an English **ReShiki** ribbon, with distinct icons
+and two groups: **Drawings** (Insert Structure, Edit Structure) and **Tools**
+(Open Pane, Preferences). Word controls the final button sizes and wrapping.
 
-- **插入结构** opens the existing pane, scrolls to the insertion controls and
-  focuses the file selector. Choose a `.rsk` file or use **Paste editable drawing**;
-  place the document cursor outside existing objects first. This command does
-  not automatically read the clipboard or invent an empty chemical drawing.
-- **编辑选中结构** opens the pane and starts the same selected-object native edit
-  used by **Edit selected drawing**. Ordinary pictures are still refused.
-- **打开窗格** displays the shared pane and its current sessions.
+- **Insert Structure** opens the existing file/clipboard insertion controls.
+  Choose a `.rsk` file or **Paste Structure** with the cursor outside existing
+  objects. It does not read the clipboard or insert an empty drawing automatically.
+- **Edit Structure** opens the native drawing captured from the current selection.
+  Plain pictures without editable data are refused.
+- **Open Pane** returns to drawings and current editing sessions.
+- **Preferences** opens settings in the same runtime. **Pane language** switches
+  English/Simplified Chinese immediately, including existing session messages.
+  **Compact spacing** and **Show workflow tips** apply immediately. These three
+  settings are stored in local webview storage, never inside the document. If
+  storage is unavailable they still apply for the current session, with a notice.
+
+To enable **Ribbon language** management, add an optional `wordManifest` field
+to your private companion config, pointing to the absolute installed Word
+sideload file, for example
+`/Users/YOUR_USER/Library/Containers/com.microsoft.Word/Data/Documents/wef/reshiki-word-dev.xml`.
+The file must exactly match the current generator's English or Chinese output.
+Restart the companion. Preferences → Ribbon language → Apply Ribbon Language
+then writes only that configured file. Save documents, finish edits and restart
+Word; reactivate the Developer Add-ins entry if Word has not loaded the changed
+manifest. Pane and ribbon languages are independent. No Office-wide language
+setting is changed. An unmanaged installation shows an explanatory message.
+The language service refuses unsupported values, request-supplied paths, symlinks
+and custom manifests instead of overwriting them. The private generated copy is
+not changed by this setting; reinstalling it resets the ribbon to its language.
 
 The Word runtime uses [SharedRuntime 1.1](https://learn.microsoft.com/en-us/javascript/api/requirement-sets/common/shared-runtime-requirement-sets)
 (Microsoft's documented Mac Word floor is 16.61, below the existing WordApi 1.4 floor). Ribbon commands and the pane
@@ -121,7 +141,7 @@ refuses to overwrite a differing manifest. Restart the companion and Word,
 then activate **Home → Add-ins → Developer Add-ins → ReShiki** once if needed.
 An old document may refer to the previous manifest version and display an
 unavailable-add-in pane, including on subsequent reopens. Close that stale pane
-and use the new **ReShiki → 编辑选中结构** button; this recovery path was verified
+and use the new **ReShiki → Edit Structure** button; this recovery path was verified
 without activating the developer menu again. The old test DOCX retained a
 `1.0.0.0` developer reference after installing `1.1.0.0`; automatic migration of
 that host-owned reference is unresolved. The native data remains embedded in the DOCX.
@@ -178,7 +198,7 @@ Do not infer success merely because a PNG or XML part was written.
 
 ## Next phases
 
-The first gate remains the real Word test matrix. The three ribbon commands
+The first gate remains the real Word test matrix. The ribbon commands
 were implemented early at the user's explicit request and tested on the recorded
 Mac Word build; they do not complete phase 1. Finish the remaining reliability
 cases before further window-activation work or SVG.
