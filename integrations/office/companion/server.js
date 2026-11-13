@@ -4,6 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, mkdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ribbonLanguageManager } from "./ribbon-language.js";
 import { Sessions } from "./sessions.js";
 import { runWorker } from "./worker.js";
 import { LIMITS, decodeBase64, validateEnvelope } from "../protocol.js";
@@ -58,7 +59,11 @@ async function jsonBody(req) {
     throw new Error("Expected a JSON object");
   return value;
 }
-export function makeHandler({ origin, sessions, worker, token = randomBytes(32).toString("hex") }) {
+export function makeHandler({
+  origin, sessions, worker,
+  ribbonLanguage = ribbonLanguageManager(),
+  token = randomBytes(32).toString("hex"),
+}) {
   const hostname = new URL(origin).host;
   let inflight = 0;
   return async (req, res) => {
@@ -102,6 +107,11 @@ export function makeHandler({ origin, sessions, worker, token = randomBytes(32).
           return send(200, { clientId: sessions.createClient(body.host) });
         sessions.touch(body.clientId);
         switch (url.pathname) {
+          case "/api/ribbon-language":
+            if (sessions.touch(body.clientId).host !== "Word") throw forbidden("Word client required");
+            if (Object.keys(body).some(key => !["clientId", "language"].includes(key)))
+              throw new Error("Unexpected ribbon preference field");
+            return send(200, await ribbonLanguage(body.language));
           case "/api/heartbeat":
             return send(200, { active: true });
           case "/api/preview": {
@@ -144,11 +154,12 @@ export function makeHandler({ origin, sessions, worker, token = randomBytes(32).
         "/protocol.js",
         "/edit-flow.js",
         "/ribbon.js",
+        "/preferences.js",
       ];
       if (
         !allowed.includes(resource) &&
         !/^\/host-adapters\/[a-zA-Z0-9_-]+\.js$/.test(resource) &&
-        !/^\/assets\/icon-(16|32|80)\.png$/.test(resource)
+        !/^\/assets\/(icon|insert|edit|pane|preferences)-(16|32|80)\.png$/.test(resource)
       )
         return send(404, { error: "Unknown resource" });
       const data = await readFile(path.join(ROOT, resource));
@@ -184,7 +195,10 @@ export async function start(config) {
   const origin = `https://localhost:${port}`;
   const server = https.createServer(
     { cert: await readFile(config.cert), key: await readFile(config.key), minVersion: "TLSv1.2" },
-    makeHandler({ origin, sessions, worker }),
+    makeHandler({
+      origin, sessions, worker,
+      ribbonLanguage: ribbonLanguageManager(config.wordManifest, port),
+    }),
   );
   server.requestTimeout = 20000;
   server.headersTimeout = 10000;

@@ -1,7 +1,12 @@
 import { createHostAdapter } from "./host-adapters/index.js";
 import { LIMITS, validateEnvelope } from "./protocol.js";
-import { OperationGate, applyPending, acknowledgeApplied } from "./edit-flow.js";
+import {
+  OperationGate,
+  applyPending,
+  acknowledgeApplied,
+} from "./edit-flow.js";
 import { registerRibbon } from "./ribbon.js";
+import { createPreferences } from "./preferences.js";
 
 const element = (id) => document.getElementById(id);
 let token,
@@ -12,6 +17,13 @@ let token,
   editReason = "";
 const gate = new OperationGate();
 const edits = new Map();
+let storage;
+try {
+  storage = window.localStorage;
+} catch {
+  /* Preferences still work for this session. */
+}
+const ui = createPreferences({ document, storage, api });
 async function api(route, body = {}) {
   const response = await fetch(`/api/${route}`, {
     method: "POST",
@@ -21,16 +33,19 @@ async function api(route, body = {}) {
     cache: "no-store",
   });
   const value = await response.json();
-  if (!response.ok) throw new Error(value.error || `Companion returned ${response.status}`);
+  if (!response.ok)
+    throw new Error(value.error || `Companion returned ${response.status}`);
   return value;
 }
 function status(message) {
-  element("status").textContent = message;
+  ui.message(element("status"), message);
 }
 async function action(fn) {
   if (stopped) return;
   if (gate.busy) {
-    status("An Office operation is in progress. Please try again when it finishes.");
+    status(
+      "An Office operation is in progress. Please try again when it finishes.",
+    );
     return;
   }
   await gate.run(async () => {
@@ -45,13 +60,18 @@ async function action(fn) {
   });
 }
 function controls(disabled) {
-  document.querySelectorAll("button,input").forEach((node) => {
-    node.disabled = disabled || (node.id === "edit" && !editSupported);
-  });
+  document
+    .querySelectorAll("#actions button,#actions input,#sessions button")
+    .forEach((node) => {
+      node.disabled = disabled || (node.id === "edit" && !editSupported);
+    });
 }
 function finishEdit(edit) {
   edits.delete(edit.sessionId);
-  edit.node.textContent = `Edit finished. Select the drawing to reopen it.\nRecovery: ${edit.recoveryFile}`;
+  ui.message(
+    edit.node,
+    `Edit finished. Select the drawing to reopen it.\nRecovery: ${edit.recoveryFile}`,
+  );
   edit.finish.remove();
 }
 async function selected() {
@@ -74,7 +94,9 @@ element("copy").addEventListener("click", () =>
   action(async () => {
     const current = await selected();
     await api("clipboard/write", { envelope: current.envelope });
-    status("Editable drawing copied. Use Paste editable drawing in the destination Office file.");
+    status(
+      "Editable drawing copied. Use Paste editable drawing in the destination Office file.",
+    );
   }),
 );
 element("file").addEventListener("change", () =>
@@ -96,7 +118,10 @@ element("file").addEventListener("change", () =>
 );
 const editSelected = () =>
   action(async () => {
-    if (!editSupported) throw new Error(editReason || "Update Office before editing this drawing.");
+    if (!editSupported)
+      throw new Error(
+        editReason || "Update Office before editing this drawing.",
+      );
     const current = await selected();
     const result = await api("edit", current);
     const row = document.createElement("div");
@@ -104,10 +129,17 @@ const editSelected = () =>
     const node = document.createElement("p");
     row.append(node);
     const finish = document.createElement("button");
-    finish.textContent = "End edit session";
+    ui.message(finish, "End edit session");
     row.append(finish);
     element("sessions").append(row);
-    const edit = { ...result, node, finish, applied: null, failed: null, blocked: false };
+    const edit = {
+      ...result,
+      node,
+      finish,
+      applied: null,
+      failed: null,
+      blocked: false,
+    };
     edits.set(result.sessionId, edit);
     finish.addEventListener("click", () =>
       action(async () => {
@@ -116,7 +148,10 @@ const editSelected = () =>
         status("Edit session finished. You can select and reopen the drawing.");
       }),
     );
-    node.textContent = `Editing in ReShiki. Save there to update this drawing.\nRecovery: ${result.recoveryFile}`;
+    ui.message(
+      node,
+      `Editing in ReShiki. Save there to update this drawing.\nRecovery: ${result.recoveryFile}`,
+    );
     status("ReShiki opened. Keep this pane open until the save is confirmed.");
   });
 element("edit").addEventListener("click", editSelected);
@@ -133,7 +168,9 @@ async function poll() {
           }
           if (edit.blocked) continue;
           if (!edit.applied) {
-            const { pending, finished } = await api("poll", { sessionId: edit.sessionId });
+            const { pending, finished } = await api("poll", {
+              sessionId: edit.sessionId,
+            });
             if (finished) {
               finishEdit(edit);
               continue;
@@ -146,7 +183,10 @@ async function poll() {
               // save. An uncertain host write still requires explicit recovery.
               const retryable = error.details?.retryable === true;
               edit.blocked = !retryable;
-              edit.node.textContent = `Update not confirmed: ${error.message}\nYour native draft is retained: ${edit.recoveryFile}\n${retryable ? "Resolve the Office error, then save again in ReShiki to retry." : "Reopen this pane and import the recovery file to recover it as a new drawing."}`;
+              ui.message(
+                edit.node,
+                `Update not confirmed: ${error.message}\nYour native draft is retained: ${edit.recoveryFile}\n${retryable ? "Resolve the Office error, then save again in ReShiki to retry." : "Reopen this pane and import the recovery file to recover it as a new drawing."}`,
+              );
               edit.failed = {
                 requestId: pending.requestId,
                 error: error.message,
@@ -163,9 +203,15 @@ async function poll() {
             await acknowledgeApplied(edit, (applied) =>
               api("ack", { sessionId: edit.sessionId, ...applied }),
             );
-            edit.node.textContent = `Drawing updated in Office. Save your Office file to keep it.\nRecovery: ${edit.recoveryFile}`;
+            ui.message(
+              edit.node,
+              `Drawing updated in Office. Save your Office file to keep it.\nRecovery: ${edit.recoveryFile}`,
+            );
           } catch (error) {
-            edit.node.textContent = `Office read-back succeeded; retrying save acknowledgement: ${error.message}\nRecovery: ${edit.recoveryFile}`;
+            ui.message(
+              edit.node,
+              `Office read-back succeeded; retrying save acknowledgement: ${error.message}\nRecovery: ${edit.recoveryFile}`,
+            );
           }
         }
       } finally {
@@ -187,7 +233,9 @@ async function heartbeat() {
   try {
     await api("heartbeat");
   } catch (error) {
-    status(`Companion heartbeat interrupted: ${error.message}. Native drafts remain in recovery.`);
+    status(
+      `Companion heartbeat interrupted: ${error.message}. Native drafts remain in recovery.`,
+    );
   } finally {
     if (!stopped) setTimeout(heartbeat, 5000);
   }
@@ -207,7 +255,8 @@ async function initialize() {
     const support = await adapter.checkSupport();
     if (support === false || support?.supported === false)
       throw new Error(
-        support?.reason || "This Office version does not support editable ReShiki drawings.",
+        support?.reason ||
+          "This Office version does not support editable ReShiki drawings.",
       );
     editSupported = support?.canEdit !== false;
     editReason = support?.editReason || "";
@@ -221,9 +270,12 @@ async function initialize() {
       ).json()
     ).token;
     clientId = (await api("client", { host: adapter.host })).clientId;
-    element("support").textContent = editSupported
-      ? `Connected to ${adapter.host}`
-      : `Connected to ${adapter.host}. ${support.editReason || "This Office version supports insertion but must be updated before editing drawings."}`;
+    ui.message(
+      element("support"),
+      editSupported
+        ? `Connected to ${adapter.host}`
+        : `Connected to ${adapter.host}. ${support.editReason || "This Office version supports insertion but must be updated before editing drawings."}`,
+    );
     element("actions").hidden = false;
     element("excel-note").hidden = adapter.host !== "Excel";
     controls(false);
@@ -231,20 +283,26 @@ async function initialize() {
     poll();
   } catch (error) {
     stopped = true;
-    element("support").textContent = error.message;
+    ui.message(element("support"), error.message);
   }
 }
 const ready = initialize();
 registerRibbon({
   Office,
   ready,
-  edit: editSelected,
+  edit: () => {
+    ui.showDrawings();
+    return editSelected();
+  },
+  open: ui.showDrawings,
+  preferences: ui.showPreferences,
   insert: () =>
     action(async () => {
+      ui.showDrawings();
       element("insert-controls").scrollIntoView({ block: "start" });
       element("file").focus();
       status(
-        "插入结构：选择 .rsk 文件，或点击 Paste editable drawing。请先将 Word 光标放在现有结构之外。",
+        "Choose a .rsk file or Paste Structure. Place the cursor outside existing drawings first.",
       );
     }),
   report: status,

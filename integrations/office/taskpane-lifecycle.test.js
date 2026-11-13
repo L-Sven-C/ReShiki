@@ -1,3 +1,4 @@
+import { preferenceDOM } from "./test-support/preferences-dom.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
@@ -100,9 +101,12 @@ async function pane(t, { ribbon = false } = {}) {
       },
     },
     document: {
+      ...preferenceDOM(nodes),
       getElementById: (id) => nodes.get(id),
-      querySelectorAll: () =>
-        ["paste", "file", "edit", "copy"].map((id) => nodes.get(id)),
+      querySelectorAll: (selector) =>
+        selector === "[data-i18n]"
+          ? []
+          : ["paste", "file", "edit", "copy"].map((id) => nodes.get(id)),
       createElement: node,
     },
     setTimeout: (callback, delay) => {
@@ -115,7 +119,8 @@ async function pane(t, { ribbon = false } = {}) {
       try {
         await beforeRequest?.(url, body);
         let value;
-        if (url === "/bootstrap.json") value = { token: "test-token" };
+        if (url === "/api/ribbon-language") value = { managed: false };
+        else if (url === "/bootstrap.json") value = { token: "test-token" };
         else if (url === "/api/client") {
           clientId = sessions.createClient(body.host);
           value = { clientId };
@@ -370,3 +375,26 @@ for (const stage of ["Office update", "save acknowledgement"]) {
     assert.equal(f.requests.length, count, "pagehide stops both loops");
   });
 }
+
+test("preferences and language switches preserve the active native session and update loop", async (t) => {
+  const f = await pane(t, { ribbon: true });
+  const originalSession = f.session.id;
+  assert.equal(typeof originalSession, "string");
+  await f.command("reshikiPreferences");
+  assert.equal(f.nodes.get("workspace").hidden, true);
+  f.nodes.get("ui-language").value = "zh-CN";
+  f.nodes.get("ui-language").listeners.change();
+  assert.equal(f.sessions.sessions.size, 1);
+  assert.equal(f.session.id, originalSession);
+  const updated = await f.save("preferences-save");
+  await f.runTimer(500);
+  assert.equal((await f.receipt()).accepted, true);
+  assert.equal((await f.receipt()).revision, updated.revision);
+  assert.match(
+    f.nodes.get("sessions").children[0].children[0].textContent,
+    /已更新 Office/,
+  );
+  await f.command("reshikiOpen");
+  assert.equal(f.nodes.get("workspace").hidden, false);
+  assert.equal(f.requests.filter((x) => x.url === "/api/client").length, 1);
+});

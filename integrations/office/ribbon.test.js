@@ -84,7 +84,7 @@ test("legacy panes without command APIs retain their normal entry points", () =>
   assert.doesNotThrow(() => registerRibbon({ Office: {} }));
 });
 
-test("Word ribbon has three controls sharing one loopback runtime at custom ports", () => {
+test("Word ribbon has four distinct controls sharing one loopback runtime at custom ports", () => {
   for (const port of [43127, 44444]) {
     const doc = new DOMParser().parseFromString(
       manifest(HOSTS[0], port),
@@ -94,23 +94,25 @@ test("Word ribbon has three controls sharing one loopback runtime at custom port
     assert.equal(elements("CustomTab").length, 1);
     assert.deepEqual(
       elements("Control").map((x) => x.getAttribute("id")),
-      ["ReShiki.Insert", "ReShiki.Edit", "ReShiki.Open"],
+      ["ReShiki.Insert", "ReShiki.Edit", "ReShiki.Open", "ReShiki.Preferences"],
     );
     assert.deepEqual(
       elements("FunctionName").map((x) => x.textContent),
-      ["reshikiInsert", "reshikiEdit"],
+      ["reshikiInsert", "reshikiEdit", "reshikiOpen", "reshikiPreferences"],
     );
     assert.equal(elements("Runtime")[0].getAttribute("lifetime"), "long");
     const runtime = elements("Runtime")[0].getAttribute("resid");
     assert.equal(elements("FunctionFile")[0].getAttribute("resid"), runtime);
-    assert.equal(
-      elements("Action")[2].getAttribute("xsi:type"),
-      "ShowTaskpane",
+    assert.equal(elements("Group").length, 2);
+    assert.ok(
+      elements("Action").every(
+        (x) => x.getAttribute("xsi:type") === "ExecuteFunction",
+      ),
     );
-    assert.equal(
-      elements("Action")[2].firstChild.getAttribute("resid"),
-      runtime,
+    const icons = elements("Control").map((x) =>
+      x.getElementsByTagName("bt:Image")[0].getAttribute("resid"),
     );
+    assert.equal(new Set(icons).size, 4);
     assert.equal(elements("TaskpaneId").length, 0);
     const urls = elements("bt:Url");
     assert.equal(urls.length, 1);

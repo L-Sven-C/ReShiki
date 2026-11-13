@@ -1,3 +1,4 @@
+import { preferenceDOM } from "./test-support/preferences-dom.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createEnvelope } from "./protocol.js";
@@ -51,8 +52,12 @@ test("Excel pane keeps insertion available but never re-enables or launches unsu
       },
     },
     document: {
+      ...preferenceDOM(nodes),
       getElementById: (id) => nodes.get(id),
-      querySelectorAll: () => ["paste", "file", "edit", "copy"].map((id) => nodes.get(id)),
+      querySelectorAll: (selector) =>
+        selector === "[data-i18n]"
+          ? []
+          : ["paste", "file", "edit", "copy"].map((id) => nodes.get(id)),
     },
     setTimeout: (callback) => {
       timers.push(callback);
@@ -77,7 +82,10 @@ test("Excel pane keeps insertion available but never re-enables or launches unsu
     },
   };
   const previous = new Map(
-    Object.keys(replacement).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+    Object.keys(replacement).map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+    ]),
   );
   Object.assign(globalThis, replacement);
   t.after(() => {
@@ -94,7 +102,10 @@ test("Excel pane keeps insertion available but never re-enables or launches unsu
   assert.equal(nodes.get("paste").disabled, false);
   assert.match(nodes.get("support").textContent, /ExcelApiDesktop/);
   await nodes.get("paste").listeners.click();
-  assert.equal(fake.state.objects.filter((object) => !object.deleted).length, 1);
+  assert.equal(
+    fake.state.objects.filter((object) => !object.deleted).length,
+    1,
+  );
   assert.equal(
     nodes.get("edit").disabled,
     true,
@@ -111,6 +122,10 @@ test("Excel pane keeps insertion available but never re-enables or launches unsu
   );
   await timers.shift()();
   await drain();
-  assert.equal(nodes.get("edit").disabled, true, "poll cleanup must retain the edit restriction");
+  assert.equal(
+    nodes.get("edit").disabled,
+    true,
+    "poll cleanup must retain the edit restriction",
+  );
   assert.equal(nodes.get("paste").disabled, false);
 });
