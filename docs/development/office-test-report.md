@@ -266,13 +266,19 @@ were then performed through the actual Word UI, not a browser mock.
 | Pane language English → 简体中文 | Labels, connection status and instructions change immediately; English ribbon remains independent | Pass |
 | Disable compact spacing, enable workflow tips → Done → Preferences | Tips appear in drawing view; both values remain set | Pass |
 | Select last structure → Edit → native rotate 180° → Preferences → pane language English → native Save while Preferences remains open → Done → Word Save | `29-preferences-before`, `30-preferences-after`, `30-preferences-update-result.json`: exact accepted ACK matches new embedded native revision. Same logical/control IDs, all six other objects unchanged, eight pictures before/after; native and displayed image changed | Pass |
-| End edit → Ribbon language 简体中文 → Apply | Restart guidance shown. Installed sideload file exactly equals generated Chinese manifest; no config, certificate or drawing content changed by this operation | Pass for application; activation below |
+| End edit → Ribbon language 简体中文 → Apply | Restart guidance shown. Installed sideload file exactly equals generated Chinese manifest; no config, certificate or drawing content changed by this operation | Pass |
 | Save → quit Word → restart and reopen DOCX | Old-document unavailable pane persists; the updated developer entry requires manual activation | Observed limitation |
+| Manually activate developer ReShiki → open ReShiki tab | Chinese 插入结构 / 编辑结构 / 打开窗格 / 偏好设置 visibly present | Pass |
+| Open Preferences after Word restart | Pane remains English; compact spacing remains disabled and workflow tips enabled | Pass |
+| Change pane language to Chinese → Word add-in menu Reload | Drawing view remains Chinese, connected to Word, with tips visible | Pass |
+| Preferences → restore English pane, compact spacing on, tips off → English ribbon → Apply | Both selectors show English; restart guidance appears; installed sideload file exactly matches generated English manifest | Pass for application; activation below |
 
-**Pending:** Chinese ribbon activation and restoration to English, preference
-persistence after restart, and final visual screenshot review. The known
-old-document unavailable-pane behavior remains separate from native data
-persistence. Private evidence remains outside Git.
+Chinese ribbon and English Preferences screenshots were visually inspected:
+distinct gray/green icons, separated command groups and settings without clipping
+at the tested pane width. Final English ribbon reactivation remains **Pending**.
+The known old-document unavailable-pane behavior remains separate from native
+data persistence. Private evidence remains outside Git. Dark appearance has not
+been visually verified.
 
 ## Observed image-quality limitation
 
