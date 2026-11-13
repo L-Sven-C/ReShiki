@@ -271,11 +271,16 @@ were then performed through the actual Word UI, not a browser mock.
 | Manually activate developer ReShiki → open ReShiki tab | Chinese 插入结构 / 编辑结构 / 打开窗格 / 偏好设置 visibly present | Pass |
 | Open Preferences after Word restart | Pane remains English; compact spacing remains disabled and workflow tips enabled | Pass |
 | Change pane language to Chinese → Word add-in menu Reload | Drawing view remains Chinese, connected to Word, with tips visible | Pass |
-| Preferences → restore English pane, compact spacing on, tips off → English ribbon → Apply | Both selectors show English; restart guidance appears; installed sideload file exactly matches generated English manifest | Pass for application; activation below |
+| Preferences → restore English pane, compact spacing on, tips off → English ribbon → Apply | Both selectors show English; restart guidance appears; installed sideload file exactly matches generated English manifest | Pass |
+| Quit/restart Word → reopen DOCX → manually activate developer ReShiki → ReShiki tab → Preferences | English Insert Structure / Edit Structure / Open Pane / Preferences visibly restored. Pane connects to Word; both language selectors show English, compact spacing is on and workflow tips are off | Pass |
 
-Chinese ribbon and English Preferences screenshots were visually inspected:
+Chinese and restored English ribbon/Preferences screenshots were visually inspected:
 distinct gray/green icons, separated command groups and settings without clipping
-at the tested pane width. Final English ribbon reactivation remains **Pending**.
+at the tested pane width. English → Chinese → English ribbon switching and local
+preference persistence are verified on this host, including the manual developer
+activation step. Final observations are recorded in private
+`31-preferences-language-host-observations.json`; no screenshot or document is
+committed.
 The known old-document unavailable-pane behavior remains separate from native
 data persistence. Private evidence remains outside Git. Dark appearance has not
 been visually verified.
